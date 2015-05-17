@@ -1,8 +1,10 @@
 import asyncio
-from concurrent.futures import CancelledError
 import inspect
 import logging
 import time
+from concurrent.futures import CancelledError
+
+
 from broadway.context import Props
 from broadway.message import Envelop
 
@@ -42,7 +44,7 @@ class Actor():
         return result
 
     @asyncio.coroutine
-    def _deliver(self, envelop: Envelop):
+    def _deliver(self, envelop: 'Envelop'):
         yield from self._inbox.put(envelop)
 
     @asyncio.coroutine

@@ -1,11 +1,7 @@
 import asyncio
-import functools
-import os
 import random
 from collections import namedtuple, defaultdict
-from signal import SIGINT, SIGTERM
-import signal
-import time
+
 from broadway.actor import Actor, caller
 
 __author__ = 'leonmax'

@@ -1,4 +1,4 @@
-from broadway.actorsystem import ActorSystem
+__author__ = 'leonmax'
 
 
 class Props():
@@ -14,7 +14,7 @@ class ActorRefFactory():
 
 
 class ActorContext(ActorRefFactory):
-    def __init__(self, system: ActorSystem):
+    def __init__(self, system: 'ActorSystem'):
         super().__init__()
         self.system = system
         self.this = None

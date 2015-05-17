@@ -1,12 +1,15 @@
+__author__ = 'leonmax'
+
 import asyncio
-from asyncio import coroutine as coro
 import logging
 import time
 import sys
-from broadway.context import ActorRef, ActorContext, Props
+from asyncio import coroutine as coro
+
+
+from broadway.context import ActorRef, ActorContext
 from broadway.exception import ActorCreationFailureException
 
-__author__ = 'leonmax'
 
 class ActorSystem():
     def __init__(self, loop=None):
@@ -34,7 +37,7 @@ class ActorSystem():
                 count += 1
         return actor_name
 
-    def actor_of(self, props: Props, actor_name: str=None):
+    def actor_of(self, props: 'Props', actor_name: str=None):
         actor_name = self._make_actor_name(props.actor_class, actor_name)
         props.kwargs['loop'] = self._loop
         props.kwargs['context'] = ActorContext(self)
