@@ -1,9 +1,10 @@
-from asyncio import coroutine as coro
-import asyncio
-from concurrent.futures import CancelledError
 import logging
-from broadway.actorref import ActorRefFactory, ActorRef, Props
+import asyncio
+from asyncio import coroutine
+from concurrent.futures import CancelledError
 from broadway.message import Envelop
+from broadway.actor import Actor
+from broadway.actorref import ActorRefFactory, ActorRef, Props
 
 
 class ActorContext():
@@ -33,31 +34,43 @@ class ActorContext():
 
 
 class ActorCell(ActorContext, ActorRefFactory):
-    def __init__(self, system, name, props, max_inbox_size=0):
+    def __init__(self, system, name, props, mailbox):
         super().__init__()
         self._system = system
         self._name = name
         self._props = props
-        self._self_ref = ActorRef(name, self)
-        self._sender = None
-        # TODO: need better actor supervision
-        self._actor = self.new_actor()
+        self._inbox = mailbox
 
-        self._loop = system._loop
-        self._max_inbox_size = max_inbox_size
-        self._inbox = asyncio.Queue(maxsize=self._max_inbox_size,
-                                    loop=self._loop)
-        self.task = None
         self.await_complete = None
         self.receive_timeout = None
+        self.task = None
         self._resume = None
+        self._sender = None
+
+        self._self_ref = ActorRef(name, self)
+        # TODO: need better actor supervision
+        self._actor = self.new_actor()
 
     def new_actor(self):
         actor_class = self._props.actor_class
         args = self._props.args
         kwargs = self._props.kwargs
-        actor = actor_class(*args, **kwargs).with_context(self)
+        if not issubclass(actor_class, Actor):
+            raise TypeError("class in the proper is not instance of Actor")
+        self.wrap_init_with_context(actor_class)
+        actor = actor_class(*args, **kwargs)  #.with_context(self)
         return actor
+
+
+    def wrap_init_with_context(self, actor_class):
+        actor_base_class = actor_class
+        context = self
+        original_init = actor_base_class.__init__
+
+        def init_wrapper(_self, *args, **kwargs):
+            _self.context = context
+            original_init(_self, *args, **kwargs)
+        actor_base_class.__init__ = init_wrapper
 
     # region properties
     @property
@@ -93,7 +106,7 @@ class ActorCell(ActorContext, ActorRefFactory):
     def actor_of(self, props: Props, actor_name=None):
         return self.system.actor_of(props, actor_name)
 
-    @coro
+    @coroutine
     def deliver(self, envelop: Envelop):
         yield from self._inbox.put(envelop)
 
@@ -101,7 +114,7 @@ class ActorCell(ActorContext, ActorRefFactory):
         self.task = loop.create_task(self.start())
         return self
 
-    @coro
+    @coroutine
     def start(self):
         try:
             self.await_complete = asyncio.Future()
@@ -115,18 +128,20 @@ class ActorCell(ActorContext, ActorRefFactory):
             logging.info("task successfully cancelled")
         finally:
             # Signal that the loop has finished.
-            if not (self.await_complete.cancelled() or
-                self.await_complete.done()):
+            if not (self.await_complete.cancelled() or self.await_complete.done()):
                 self.await_complete.set_result(True)
 
     # @asyncio.coroutine
     # def _system_message_process(self, message):
     #     if isinstance(message,
 
-    @coro
+    @coroutine
     def _invoke(self, envelop):
         try:
-            self._sender = envelop.sender
+            if envelop.sender:
+                self._sender = envelop.sender
+            else:
+                self._sender = self.system.dead_letters
             yield from self._actor.receive(envelop.message)
         except CancelledError as e:
             raise e
@@ -138,7 +153,7 @@ class ActorCell(ActorContext, ActorRefFactory):
         # TODO: maybe with decorator support
         logging.exception('Unhandled exception during actor invocation')
 
-    @coro
+    @coroutine
     def stop(self):
         if self.await_complete and not (
                     self.await_complete.cancelled() or
